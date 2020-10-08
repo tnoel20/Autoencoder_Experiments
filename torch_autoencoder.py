@@ -32,11 +32,12 @@ class Autoencoder(nn.Module):
         )
         '''
         self.encoder_layer = nn.Linear(
-            in_features=kwargs["input_shape"], out_features=128 
+            in_features=kwargs["input_shape"], out_features=kwargs["hid_units"]
+            #128 
             # TODO: Should pass "hidden_units" as a kwargs key
         )
         self.decoder_layer = nn.Linear(
-            in_features=128, out_features=kwargs["input_shape"]
+            in_features=kwargs["hid_units"], out_features=kwargs["input_shape"]
         )
         
 
@@ -90,7 +91,7 @@ def train_model(model, data_loader, device, num_epochs=20, learning_rate=1e-3):
         print("epoch : {}/{}, loss = {:.6f}".format(epoch+1,num_epochs,loss))
         outputs.append((epoch,img,reconstruction),)
     
-    return outputs
+    return outputs, loss
 
 
 def training_progression(outputs):
@@ -101,8 +102,13 @@ def training_progression(outputs):
         recon = outputs[k][2].detach().cpu().numpy()
         for i, item in enumerate(imgs):
             if i >= 9: break
+            plt.subplot(2,9,i+1)
+            plt.imshow(item[0])
+        for i, item in enumerate(imgs):
+            if i >= 9: break
             plt.subplot(2,9,9+i+1)
             plt.imshow(item[0])
+    plt.show()
 
 
 def main():
@@ -130,12 +136,25 @@ def main():
     # Use the GPU
     device = torch.device("cuda")
 
-    # Create an instance of Autoencoder
-    model = Autoencoder(input_shape=CIFAR10_DIM).to(device)
-    
-    outputs = train_model(model, train_loader, device)
+    hidden_units = [4, 8, 10, 16, 20, 30, 32, 40, 50, 64, 80, 128]
+    losses = []
 
-    training_progression(outputs)
+    for hidden_dim in hidden_units:
+        # Create an instance of Autoencoder
+        model = Autoencoder(input_shape=CIFAR10_DIM, hid_units=hidden_dim).to(device)
+
+        # Note that loss is MSE
+        outputs, loss = train_model(model, train_loader, device)
+
+        #training_progression(outputs)
+
+        losses.append(loss)
+
+    plt.plot(hidden_units, losses)
+    plt.xlabel('Hidden Units')
+    plt.ylabel('Loss, MSE')
+    plt.title('Autoencoder Reconstruction Error')
+    plt.show()
      
     
 if __name__ == '__main__':
