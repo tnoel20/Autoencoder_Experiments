@@ -5,6 +5,7 @@ import torch.optim as optim
 import scipy
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 from torchvision import datasets, transforms
 
 # Implement autoencoder with several different latent
@@ -52,9 +53,9 @@ class Autoencoder(nn.Module):
         reconstructed = torch.relu(decoded)
         return reconstructed
     
-def train_model(model, data_loader, device, num_epochs=20, learning_rate=1e-3):
+def train_model(model, data_loader, device, num_epochs=20, lr=1e-3):
     # Creating an optimizer object, using learning rate of 1e-3
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
     criterion = nn.MSELoss()
     outputs = []
 
@@ -90,9 +91,47 @@ def train_model(model, data_loader, device, num_epochs=20, learning_rate=1e-3):
         # display the epoch training loss
         print("epoch : {}/{}, loss = {:.6f}".format(epoch+1,num_epochs,loss))
         outputs.append((epoch,img,reconstruction),)
-    
-    return outputs, loss
 
+    return outputs, loss, optimizer
+
+
+def compute_test_loss(model, data_loader, device):
+    criterion = nn.MSELoss()
+    outputs = []
+    loss = 0
+
+    for batch_features, _ in data_loader:
+        img = batch_features
+        # Reshape mini-batch data to [N, 32*32] matrix
+        # Load it to the active device
+        batch_features = batch_features.view(-1, 32*32).to(device)
+
+        # reset the gradients
+        #optimizer.zero_grad()
+
+        # compute reconstructions
+        reconstruction = model(batch_features)
+
+        # compute training reconstruction loss
+        test_loss = criterion(reconstruction, batch_features)
+
+        # compute accumulated gradients
+        #train_loss.backward()
+
+        # perform parameter update based on current gradients
+        #optimizer.step()
+
+        # add the mini-batch training loss to epoch loss
+        loss += test_loss.item()
+
+    # Compute the epoch training loss
+    loss = loss / len(data_loader)
+    # display the epoch test loss
+    print("test loss = {:.6f}".format(loss))
+    outputs.append((img,reconstruction),)
+
+    return outputs, loss
+    
 
 def training_progression(outputs):
     num_epochs = len(outputs)
@@ -115,9 +154,7 @@ def main():
     CIFAR10_DIM = 32*32
     NUM_EPOCHS = 20
 
-    # DROOT = '/nfs/hpc/share/noelt/data'
-    # Load the dataset and transform it
-        
+    # Load and transform the dataset
     train_dataset = datasets.CIFAR10(
         root='data', train=True, transform=transforms.ToTensor(), download=True
     )
@@ -136,7 +173,29 @@ def main():
     # Use the GPU
     device = torch.device("cuda")
 
-    hidden_units = [4, 8, 10, 16, 20, 30, 32, 40, 50, 64, 80, 128]
+    hidden_dim = 50
+    # Create an instance of Autoencoder
+    model = Autoencoder(input_shape=CIFAR10_DIM, hid_units=hidden_dim).to(device)
+
+    # Note that loss is MSE
+    outputs, loss, optimizer = train_model(model, train_loader, device)
+    test_outputs, test_loss = compute_test_loss(model, test_loader, device)
+    
+    torch.save({'epoch': NUM_EPOCHS,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'loss': loss,
+               }, 'autoencoder_save.pth')
+
+    # TODO Create Encoder Class and Decoder classes, then save trained Encoder?
+    # AND/OR tinker with state_dict to determine if a subset of layers can
+    # be heldout or ignored
+
+    
+    ############################################################################
+    '''
+    hidden_units = [2, 4, 6, 8, 10, 12, 16, 20, 25, 30, 32, 40, 45, 50, \
+                    60, 64, 70, 80, 90, 100, 110, 120, 128]
     losses = []
 
     for hidden_dim in hidden_units:
@@ -144,18 +203,23 @@ def main():
         model = Autoencoder(input_shape=CIFAR10_DIM, hid_units=hidden_dim).to(device)
 
         # Note that loss is MSE
-        outputs, loss = train_model(model, train_loader, device)
+        outputs, loss, _ = train_model(model, train_loader, device)
+        test_outputs, test_loss = compute_test_loss(model, test_loader, device)
 
         #training_progression(outputs)
 
-        losses.append(loss)
+        losses.append(test_loss)
 
+    for i in range(len(hidden_units)):
+        print('For {} hidden units, test loss is {}'.format(hidden_units[i],losses[i]))
+
+    sns.set(font_scale=1.5)
     plt.plot(hidden_units, losses)
     plt.xlabel('Hidden Units')
     plt.ylabel('Loss, MSE')
     plt.title('Autoencoder Reconstruction Error')
     plt.show()
-     
+    '''
     
 if __name__ == '__main__':
     main()
